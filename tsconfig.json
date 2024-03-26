@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "module": "commonjs",
+    "rootDirs": [
+      "src",
+      "tests"
+    ],
+    "outDir": "dist",
+    "lib": ["es7", "esnext"],
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUnusedParameters": true,
+    "noUnusedLocals": true,
+    "downlevelIteration": true,
+    "moduleResolution": "node",
+    "pretty": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "declaration": true,
+    "paths": {
+      "*": [
+        "./node_modules/@types/*",
+        "/usr/lib/node_modules/*",
+        "/usr/lib/node_modules/@types/*",
+        "*"
+      ]
+    }
+  },
+  "exclude": [
+    "./src/__tests__/**"
+  ],
+  "include": [
+      "src/**/*.ts"
+  ]
+}
