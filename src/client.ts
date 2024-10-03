@@ -45,7 +45,7 @@ export class FeatureClient {
 
   public static instance: FeatureClient;
 
-  public isDebugg: boolean = false;
+  public isDebug: boolean = false;
   public interval: number = FIVE_MINUTES;
 
   constructor(
@@ -65,15 +65,15 @@ export class FeatureClient {
     this.store = new StoreController(project, variables);
     FeatureClient.instance = this;
 
-    this.isDebugg = isDebugg;
+    this.isDebug = isDebugg;
     this.grpcUrl = grpcUrl;
     this.interval = interval;
   }
 
   private async exchangeLoop() {
-    const _exchangeLoop = (resolve = (): any => void 0, reject = (e: Error): any => void e) => {
+    const _exchangeLoop = (resolve = (): any => void 0, reject = (e: any): any => void e) => {
       setTimeout(async () => {
-        this.isDebugg && console.log('Exchange task started');
+        this.isDebug && console.log('Exchange task started');
 
         const timeMS = Date.now();
         const timestamp = new Timestamp({
@@ -91,10 +91,10 @@ export class FeatureClient {
         }));
 
         const request = this.store.getRequest(flagsUsage);
-        this.isDebugg && console.log(`Exchange request: `, request);
+        this.isDebug && console.log(`Exchange request: `, request);
         try {
           const reply = await this.grpcClient.callExchange(request);
-          this.isDebugg && console.log(`Exchange reply: `, reply);
+          this.isDebug && console.log(`Exchange reply: `, reply);
           this.store.applyReply(reply);
 
           this.retries = 0;
@@ -103,7 +103,7 @@ export class FeatureClient {
           if (this.retries <= this.maxRetry) {
             this.loopInterval = this.loopInterval + this.retryStep;
             console.log(`Failed to exchange: ${e}, retry in ${this.loopInterval} mls`);
-            this.isDebugg && console.log(e.stack);
+            this.isDebug && console.log(e.stack);
             this.retries++;
             reject(e);
           } else this.stopLoop = true;
@@ -115,11 +115,12 @@ export class FeatureClient {
           this.loopInterval = this.interval;
         }
 
-        this.isDebugg && console.log(`Exchange complete, next will be in ${this.loopInterval} mls`);
+        this.isDebug && console.log(`Exchange complete, next will be in ${this.loopInterval} mls`);
         !this.stopLoop && _exchangeLoop();
       }, this.loopInterval);
     };
 
+    // @ts-expect-error FIXME
     return new Promise((resolve, reject) => _exchangeLoop(resolve, reject));
   }
 

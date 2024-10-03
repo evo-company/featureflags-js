@@ -1,6 +1,6 @@
 import * as conditions from '../src/conditions';
 
-function checkOP(left: any, op: Function, right: any): Boolean {
+function checkOP(left: any, op: Function, right: any): boolean {
   return op('var', right)(left ? { var: left } : {});
 }
 
@@ -44,7 +44,7 @@ describe('Procs and constions', () => {
   });
   it('Test wildcard', () => {
     expect(checkOP('corvus@gmail.com', conditions.wildcard, 'corvus@*')).toBe(true);
-    expect(checkOP('kurt@yandex.ru', conditions.wildcard, 'corvus@*')).toBe(false);
+    expect(checkOP('kurt@gmail.com', conditions.wildcard, 'corvus@*')).toBe(false);
   });
   it('Test subset', () => {
     expect(checkOP(['z', 'y', 'o', 'x', 'p'], conditions.subset, { items: ['x', 'y', 'z'] })).toBe(

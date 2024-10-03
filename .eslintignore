@@ -1,0 +1,10 @@
+# Ignore any build artifacts
+build/
+dist/
+
+# Ignore local dev files
+node_modules/
+coverage/
+jest.config.ts
+eslint.config.js
+__tests__/

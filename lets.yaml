@@ -1,0 +1,97 @@
+shell: bash
+
+env:
+  DOCKER_BUILDKIT: "1"
+  COMPOSE_DOCKER_CLI_BUILD: "1"
+  CURRENT_UID:
+    sh: echo "`id -u`:`id -g`"
+
+commands:
+  build-dev:
+    description: build dev image
+    cmd: |
+      docker build \
+        -f Dockerfile \
+        -t featureflags-js \
+        --target dev \
+        .
+
+  build-test:
+    description: build test image
+    cmd: |
+      docker build \
+        -f Dockerfile \
+        -t featureflags-js-test \
+        --target test \
+        .
+
+  build-docs:
+    description: build docs image
+    cmd: |
+      docker build \
+        -f Dockerfile \
+        -t featureflags-js-docs \
+        --target docs \
+        .
+
+  build-examples:
+    description: build examples image
+    cmd: |
+      docker build \
+        -f Dockerfile \
+        -t featureflags-js-examples \
+        --target examples \
+        .
+
+  test:
+    description: Run tests
+    depends: [ build-test ]
+    cmd: |
+      docker-compose run -T --rm base \
+        npm run test -- --verbose
+
+  pretty-check:
+    description: Prettify code check
+    depends: [ build-dev ]
+    cmd: |
+      docker-compose run -T --rm base \
+        npm run pretty:check
+
+  pretty:
+    description: Prettify code
+    depends: [ build-dev ]
+    cmd: |
+      docker-compose run -T --rm base \
+        npm run pretty
+
+  lint-check:
+    description: Run eslint on code
+    depends: [ build-dev ]
+    cmd: |
+      docker-compose run -T --rm base \
+        npm run lint:check
+
+  lint:
+    description: Run eslint fix
+    depends: [ build-dev ]
+    cmd: |
+      docker-compose run -T --rm base \
+        npm run lint
+
+  ts-check:
+    description: Run tsc on code
+    depends: [ build-dev ]
+    cmd: |
+      docker-compose run -T --rm base \
+        npm run ts:check
+
+  git-hooks:
+    description: Enable git hooks for yourself
+    cmd: npx simple-pre-commit
+
+  run-git-hooks:
+    description: Run git hooks
+    depends: [ build-dev ]
+    cmd: |
+      docker-compose run -T --rm base \
+        npm run precommit

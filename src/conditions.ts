@@ -44,7 +44,7 @@ export function percent(name: string, value: any): Function {
 
 export function regexp(name: string, value: any): Function {
   return (ctx: IDictionary<any>) => {
-    const compRegExp = new RegExp(value);
+    const compRegExp = new RegExp(String(value));
     return isString(ctx[name]) && Boolean(ctx[name].match(compRegExp));
   };
 }
@@ -135,7 +135,7 @@ export function flagProc(result: IResult, flagId: string): Function {
     return () => false;
   }
 
-  const conditions: (Function | Boolean)[][] = [];
+  const conditions: (Function | boolean)[][] = [];
 
   flag.conditions &&
     flag.conditions.forEach((conditionRef) => {

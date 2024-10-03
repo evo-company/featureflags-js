@@ -15,7 +15,7 @@ const initConnectionWaitTimeMs: number = 3000;
 export class FeatureGrpcClient {
   private readonly grpcServerUrl: string;
   private grpcFlagsClient: FeatureFlags;
-  private initConnectionFailed: Boolean;
+  private initConnectionFailed: boolean;
 
   constructor(url: string) {
     if (!url) throw new Error('You should provide correct grpc url');

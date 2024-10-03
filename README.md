@@ -1,3 +1,12 @@
+# TODO:
+- Dockerfile
+- fix eslint configs
+- add http client instead of grpc
+- delete old grpc code and proto files
+- add http values client
+- add mock clients
+- add doc with examples
+
 # Feature Flags client
 
 NodeJS client `grpc` lib, for [featureflags](https://github.com/evo-company/featureflags) service. Provides abilitty to gracefull *set* and *update*s
@@ -145,8 +154,3 @@ if (flags.TEST) doSomeThing();
 `.proto` files are vendored. Original [protofiles are here](https://github.com/evo-company/featureflags/tree/main/protobuf/featureflags/protobuf)
 
 `.proto` files must be kept in sync with original repo and stubs must be regenerated if needed.
-
-### TODO:
-- *StatsController* - Accumulates interval/flag/requests count
-- *Tracer* - Accumulates request/flag/values
-- *Dummy Manager* - For testing purposes

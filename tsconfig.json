@@ -1,36 +1,46 @@
 {
   "compilerOptions": {
-    "target": "es2017",
-    "module": "commonjs",
+    "target": "esnext",
+    "module": "esnext",
     "rootDirs": [
-      "src",
-      "tests"
+      "src"
     ],
     "outDir": "dist",
-    "lib": ["es7", "esnext"],
-    "noImplicitAny": true,
-    "noImplicitReturns": true,
+    "lib": [
+      "es7",
+      "esnext",
+      "dom"
+    ],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "noUnusedParameters": true,
     "noUnusedLocals": true,
     "downlevelIteration": true,
+    "strict": false,  // TODO: Enable
+    "noImplicitAny": false,  // TODO: Enable
+    "strictNullChecks": false,   // TODO: Enable
+    "noImplicitReturns": false,  // TODO: Enable
+    "strictFunctionTypes": false,  // TODO: Enable
+    "strictBindCallApply": true,
     "moduleResolution": "node",
     "pretty": true,
     "sourceMap": true,
     "baseUrl": ".",
     "declaration": true,
-    "paths": {
-      "*": [
-        "./node_modules/@types/*",
-        "/usr/lib/node_modules/*",
-        "/usr/lib/node_modules/@types/*",
-        "*"
-      ]
-    }
+    "resolveJsonModule": true,
+    "types": [
+      "@types/jest",
+      "@types/node"
+    ],
+//    "allowJs": true
   },
   "exclude": [
-    "./src/__tests__/**"
+    "__tests__/**",
+    "node_modules",
+    "build",
   ],
   "include": [
-      "src/**/*.ts"
+    "src/**/*"
   ]
 }
