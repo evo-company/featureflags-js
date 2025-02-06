@@ -1,11 +1,6 @@
 import { IDictionary } from './types';
 import { isString } from './utils';
 
-import { featureflags } from '../protostub/proto';
-
-import IResult = featureflags.graph.IResult;
-import Check = featureflags.graph.Check.Operator;
-
 export function equal(name: string, value: any): Function {
   return (ctx: IDictionary<any>) => {
     if (value.constructor.name !== 'Object') return ctx[name] === value;
@@ -101,97 +96,68 @@ export const OPS = {
   [Check.SUPERSET]: superset,
 };
 
-export function checkProc(result: IResult, checkId: string): boolean | Function {
-  const check = result.Check[checkId];
-
-  if (!check.variable.Variable) {
-    console.log(`Check[${checkId}].variable is unset`);
+export function checkProc(check: any): boolean | Function {
+  if (!check) {
+    console.log(`Check variable is unset`);
     return false;
   }
 
   if (check.operator === Check.__DEFAULT__) {
-    console.log(`Check[${checkId}].operator is unset`);
+    console.log(`Check[${check.name}].operator is unset`);
     return false;
   }
 
-  const variable = result.Variable[check.variable.Variable];
+  const variable = check.variable;
 
   if (!variable.name) {
-    console.log(`Check[${checkId}].name is unset`);
+    console.log(`Check.name is unset`);
     return false;
   }
 
-  // awesome TS realisation dont have WhichOneof method in proto, so u see this
-  const value = check.valueString || check.valueNumber || check.valueSet || check.valueTimestamp;
+  const value = check.value;
 
+  // @ts-ignore
   return OPS[check.operator](variable.name, value);
 }
 
-export function flagProc(result: IResult, flagId: string): Function {
-  const flag = result.Flag[flagId];
-
-  if (!('enabled' in flag)) {
-    console.log(`Flag[${flagId}].enabled is unset`);
+export function flagProc(flag: any): Function {
+  if (!flag || !flag.enabled) {
     return () => false;
   }
 
-  const conditions: (Function | Boolean)[][] = [];
+  const conditions: (Function | Boolean)[] = [];
+
 
   flag.conditions &&
-    flag.conditions.forEach((conditionRef) => {
-      const condition = result.Condition[conditionRef.Condition];
-      const checks = condition.checks
-        .map((checkRef) => {
-          return checkProc(result, checkRef.Check);
-        })
-        .filter((v) => v);
-
-      if (checks.length > 0) {
-        conditions.push(checks);
-      } else {
-        console.log(`Condition[${conditionRef.Condition}].checks is empty`);
-      }
+    flag.conditions.forEach((condition: any) => {
+      condition.checks.forEach((checkRef: any) => {
+        const resCheck = checkProc(checkRef);
+        if (resCheck ) {
+          conditions.push(resCheck);
+        }
+      });
     });
 
-  let proc: Function = (): void => void 0;
+  const result = (ctx:any) => conditions.every((condition) => {
+    if(typeof condition === 'function'){
+      console.log(condition.toString(),ctx,'ctx');
+      return condition(ctx);
+    }
+    return condition;
+  })
 
-  const filteredConditions = conditions.filter((checks) => {
-    return checks.filter((check) => check).length > 0;
-  });
-
-  if (flag.enabled.value && filteredConditions.length > 0) {
-    proc = (ctx: object) => {
-      return filteredConditions.some((_checks) =>
-        _checks.every((_check) => typeof _check === 'function' && _check(ctx)),
-      );
-    };
-  } else {
-    proc = () => {
-      const res = flag.enabled.value;
-
-      if (!res && flag.overridden.value) {
-        return false;
-      }
-
-      return res;
-    };
-  }
-
-  return proc;
+  return result;
 }
 
-export function loadFlags(result: IResult): IDictionary<Function> {
+export function loadFlags(result: any): IDictionary<Function> {
   const procs: IDictionary<Function> = {};
 
-  result &&
-    result.Root.flags.forEach((flagRef) => {
-      const flag = result.Flag[flagRef.Flag];
-      if (!flag.name) {
-        console.log(`Flag[${flagRef.Flag}].name is not set`);
-        return;
-      }
-      procs[flag.name] = flagProc(result, flagRef.Flag);
-    });
-
+  result.forEach((element: any) => {
+    if (element.conditions && element.conditions[0]) {
+      procs[element.name] = flagProc(element);
+    } else {
+      procs[element.name] = () => element.enabled;
+    }
+  });
   return procs;
 }

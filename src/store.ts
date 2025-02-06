@@ -1,14 +1,6 @@
 import { Variable } from './client';
 import { loadFlags } from './conditions';
-import { getFalgsQuery } from './query';
 import { IDictionary } from './types';
-
-import { featureflags, hiku } from '../protostub/proto';
-
-import Node = hiku.protobuf.query.Node;
-import IExchangeRequest = featureflags.service.IExchangeRequest;
-import IExchangeReply = featureflags.service.IExchangeReply;
-import IFlagUsage = featureflags.service.IFlagUsage;
 
 export class StoreController {
   private readonly project: string;
@@ -17,9 +9,6 @@ export class StoreController {
   private state: IDictionary<Function>;
   private version: number;
 
-  private readonly exchangeQuery: Node;
-  private variablesSent: boolean;
-  private flagsUsageSent: boolean;
 
   constructor(project: string, variables: Variable[]) {
     this.project = project;
@@ -27,35 +16,28 @@ export class StoreController {
 
     this.state = {};
     this.version = 0;
-
-    this.exchangeQuery = getFalgsQuery(project);
-    this.variablesSent = false;
   }
 
   public getCheck(name: string): Function {
     return this.state[name];
   }
 
-  public getRequest(flagsUsage: IFlagUsage[]): IExchangeRequest {
-    const request: IExchangeRequest = {
+  public getRequest(flagsUsage: any): any {
+    const request: any = {
       project: this.project,
       version: this.version,
-      query: this.exchangeQuery,
-      variables: [],
+      variables: this.variables,
+      flags: flagsUsage,
     };
-
-    if (!this.variablesSent) request.variables = this.variables;
-    if (!this.flagsUsageSent) request.flagsUsage = flagsUsage;
 
     return request;
   }
 
-  public applyReply(reply: IExchangeReply) {
-    this.variablesSent = true;
-    this.flagsUsageSent = true;
+  public applyReply(reply: any) {
+    console.log(reply);
 
-    if (this.version !== reply.version) {
-      this.state = loadFlags(reply.result);
+    if (reply && this.version !== reply.version && reply.version !== undefined) {
+      this.state = loadFlags(reply.flags);
       this.version = reply.version;
     }
   }
