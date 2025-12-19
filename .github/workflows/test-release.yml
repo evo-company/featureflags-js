@@ -17,7 +17,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: npm ci
@@ -28,16 +28,33 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Test version bump (dry-run)
+      - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          echo "Поточна версія:"
-          node -p "require('./package.json').version"
-          echo ""
-          echo "Після patch буде:"
-          npm version patch --no-git-tag-version
-          node -p "require('./package.json').version"
-          echo ""
-          echo "✅ Все працює! Реліз буде успішним."
+
+      - name: Create beta version for PR
+        id: version
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          npm version prerelease --preid=beta-pr$PR_NUMBER --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Створено бета версію: $NEW_VERSION"
+
+      - name: Publish beta to NPM
+        run: npm publish --access public --tag beta
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+
+      - name: Comment PR with version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 Beta версія опублікована: \`${{ steps.version.outputs.new_version }}\`\n\nВстановити:\n\`\`\`bash\nnpm install @evo/featureflags-client@${{ steps.version.outputs.new_version }}\n\`\`\``
+            })
 
