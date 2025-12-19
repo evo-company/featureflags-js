@@ -1,25 +1,77 @@
-import { FeatureClient, Variable, Types } from './client';
+import { FeatureClient, Variable, Types, getFlags, normalizeIP } from './index';
 
-// Ur default flags dict
-const Flags = {
-  TEST: false,
-  NODE: false,
+// Default Flags
+export const Flags = {
+  TEST_FEATURE: false,
+  NODE_MONITORING: false,
+  NEW_API_ENDPOINT: false,
+  ENABLE_CACHE: false,
 };
 
-const featureClient = new FeatureClient(
-  'vchasno', // project name
-  'grpc.featureflags.svc.olympus.evo:50051', // grpc-url
-  Flags, // default flags
-  [
-    new Variable('username', Types.STRING), // ur controll values for Checks
-  ],
-  true, // isDebugg mode
-);
+export type tFlagsService = Partial<typeof Flags>;
 
-// This will start infinite loop, to update flags values every 5 min
-// assume u will get flags for features in ur controller
-// u cant get actual val on application start-up, basicly u can, but they`ll in default
-featureClient
-  .start()
-  .then()
-  .catch((err) => console.log(`FF client start fail ${err}`));
+// Словник змінних для feature flags
+export const FlagsVariables = {
+  UserIp: 'user.ip',
+  UserId: 'user.id',
+  Username: 'user.username',
+};
+
+// Helper функція для отримання конкретного флага
+export const useFlag = (flag: keyof tFlagsService, ctx: any = {}): boolean | undefined => {
+  return getFlags(ctx)[flag];
+};
+
+// Змінні для перевірки умов
+const UserIp = new Variable(FlagsVariables.UserIp, Types.STRING);
+const UserId = new Variable(FlagsVariables.UserId, Types.NUMBER);
+const Username = new Variable(FlagsVariables.Username, Types.STRING);
+
+// Конфігурація (у production це буде з config файлу)
+interface Config {
+  appName: string;
+  backendUrl: string;
+  isDebug?: boolean;
+}
+
+export const initFlags = async (config: Config) => {
+  const ffClient = new FeatureClient(
+    config.appName,
+    config.backendUrl,
+    Flags,
+    [UserIp, UserId, Username],
+    config.isDebug || false,
+  );
+
+  try {
+    await ffClient.start();
+    console.info(`Starting [featureFlags client]`);
+  } catch (e) {
+    console.error(
+      `Error at FeatureFlags startup. Going to start application with default flags: Error - ${e}`,
+    );
+  }
+
+  return ffClient;
+};
+
+const config: Config = {
+  appName: 'vchasno',
+  backendUrl: 'http://localhost:3000',
+  isDebug: true,
+};
+
+initFlags(config).then(() => {
+  console.log('Feature flags initialized');
+  
+  // Приклад використання з нормалізацією IP
+  // У реальному коді req.ip може бути '::ffff:192.168.1.1'
+  const mockIP = '::ffff:192.168.97.5';
+  
+  const flags = getFlags({
+    'user.ip': normalizeIP(mockIP), // Буде '192.168.97.5'
+    'user.id': 12345,
+  });
+  
+  console.log('Example flags:', flags);
+});

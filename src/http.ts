@@ -26,11 +26,22 @@ export class FeatureHttpClient {
   }
 
   public async callExchange(payload: any): Promise<any> {
+    const formattedPayload = this.formatPayload(payload);
+    
     try {
-      const response = await this.httpClient.post<any>('', this.formatPayload(payload));
+      const response = await this.httpClient.post<any>('', formattedPayload);
       return response.data;
     } catch (error) {
-      console.log('HTTP request failed or unexpected error occurred http');
+      const err = error as any;
+      if (err.code === 'ECONNREFUSED') {
+        throw new Error(`Failed to connect to feature flags server. Is it running?`);
+      } else if (err.code === 'ECONNABORTED') {
+        throw new Error(`Failed to connect before the deadline`);
+      } else if (err.response) {
+        throw new Error(`Server responded with error: ${err.response.status} ${err.response.statusText}`);
+      } else {
+        throw new Error(`HTTP request failed: ${err.message}`);
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-import { Variable } from './client';
+import { Variable } from './variables';
 import { loadFlags } from './conditions';
 import { IDictionary } from './types';
 
@@ -34,8 +34,6 @@ export class StoreController {
   }
 
   public applyReply(reply: any) {
-    console.log(reply);
-
     if (reply && this.version !== reply.version && reply.version !== undefined) {
       this.state = loadFlags(reply.flags);
       this.version = reply.version;

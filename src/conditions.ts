@@ -1,4 +1,4 @@
-import { IDictionary } from './types';
+import { IDictionary, Check } from './types';
 import { isString } from './utils';
 
 export function equal(name: string, value: any): Function {
@@ -140,7 +140,6 @@ export function flagProc(flag: any): Function {
 
   const result = (ctx:any) => conditions.every((condition) => {
     if(typeof condition === 'function'){
-      console.log(condition.toString(),ctx,'ctx');
       return condition(ctx);
     }
     return condition;
