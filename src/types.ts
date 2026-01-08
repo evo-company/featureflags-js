@@ -21,3 +21,16 @@ export enum Check {
   SUPERSET = 11,
 }
 
+export interface IFlagRequest {
+  project: string;
+  version?: number;
+  variables?: any[];
+  flags?: string[];
+  values?: any[];
+}
+
+export interface IFlagResponse {
+  version: number;
+  flags: any[];
+}
+

@@ -1,4 +1,4 @@
-import { FeatureClient, Variable, Types, getFlags, normalizeIP } from './index';
+import { FeatureClient, Variable, Types, getFlags } from './index';
 
 // Default Flags
 export const Flags = {
@@ -10,24 +10,24 @@ export const Flags = {
 
 export type tFlagsService = Partial<typeof Flags>;
 
-// Словник змінних для feature flags
+// Dictionary of variables for feature flags
 export const FlagsVariables = {
   UserIp: 'user.ip',
   UserId: 'user.id',
   Username: 'user.username',
 };
 
-// Helper функція для отримання конкретного флага
+// Helper function to get specific flag
 export const useFlag = (flag: keyof tFlagsService, ctx: any = {}): boolean | undefined => {
   return getFlags(ctx)[flag];
 };
 
-// Змінні для перевірки умов
+// Variables for checking conditions
 const UserIp = new Variable(FlagsVariables.UserIp, Types.STRING);
 const UserId = new Variable(FlagsVariables.UserId, Types.NUMBER);
 const Username = new Variable(FlagsVariables.Username, Types.STRING);
 
-// Конфігурація (у production це буде з config файлу)
+// Configuration (in production this will be from config file)
 interface Config {
   appName: string;
   backendUrl: string;
@@ -64,12 +64,12 @@ const config: Config = {
 initFlags(config).then(() => {
   console.log('Feature flags initialized');
   
-  // Приклад використання з нормалізацією IP
-  // У реальному коді req.ip може бути '::ffff:192.168.1.1'
-  const mockIP = '::ffff:192.168.97.5';
+  // Example usage with IP normalization
+  // In real code req.ip might be '::ffff:192.168.1.1'
+  const mockIP = '192.168.97.5';
   
   const flags = getFlags({
-    'user.ip': normalizeIP(mockIP), // Буде '192.168.97.5'
+    'user.ip': mockIP, // Will be '192.168.97.5'
     'user.id': 12345,
   });
   

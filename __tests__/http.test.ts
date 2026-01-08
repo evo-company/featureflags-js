@@ -27,7 +27,7 @@ describe('FeatureHttpClient', () => {
       new FeatureHttpClient(baseURL);
 
       expect(axios.create).toHaveBeenCalledWith({
-        baseURL: `${baseURL}/flags/load`,
+        baseURL: baseURL,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -83,14 +83,136 @@ describe('FeatureHttpClient', () => {
     });
   });
 
-  describe('callExchange', () => {
+  describe('callLoad', () => {
     let httpClient: FeatureHttpClient;
 
     beforeEach(() => {
       httpClient = new FeatureHttpClient(baseURL);
     });
 
-    it('should successfully call exchange and return data', async () => {
+    it('should successfully call /load endpoint and return data', async () => {
+      const mockResponse = {
+        data: {
+          version: 10,
+          result: { flags: [] },
+        },
+      };
+      mockAxiosInstance.post.mockResolvedValue(mockResponse);
+
+      const payload = {
+        project: 'test',
+        version: 5,
+        variables: [],
+        flags: ['FLAG_1'],
+      };
+
+      const result = await httpClient.callLoad(payload);
+
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flags/load', {
+        project: 'test',
+        version: 5,
+        variables: [],
+        flags: ['FLAG_1'],
+        values: [],
+      });
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('should throw error on ECONNREFUSED', async () => {
+      const error = { code: 'ECONNREFUSED' };
+      mockAxiosInstance.post.mockRejectedValue(error);
+
+      await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
+        'Failed to connect to feature flags server (load). Is it running?'
+      );
+    });
+
+    it('should throw error on ECONNABORTED (timeout)', async () => {
+      const error = { code: 'ECONNABORTED' };
+      mockAxiosInstance.post.mockRejectedValue(error);
+
+      await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
+        'Failed to connect before the deadline (load)'
+      );
+    });
+
+    it('should throw error on server error response', async () => {
+      const error = {
+        response: {
+          status: 422,
+          statusText: 'Unprocessable Entity',
+        },
+      };
+      mockAxiosInstance.post.mockRejectedValue(error);
+
+      await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
+        'Server responded with error (load): 422 Unprocessable Entity'
+      );
+    });
+
+    it('should throw general error for other errors', async () => {
+      const error = { message: 'Network error' };
+      mockAxiosInstance.post.mockRejectedValue(error);
+
+      await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
+        'HTTP request failed (load): Network error'
+      );
+    });
+  });
+
+  describe('callSync', () => {
+    let httpClient: FeatureHttpClient;
+
+    beforeEach(() => {
+      httpClient = new FeatureHttpClient(baseURL);
+    });
+
+    it('should successfully call /sync endpoint and return data', async () => {
+      const mockResponse = {
+        data: {
+          version: 10,
+          result: { flags: [] },
+        },
+      };
+      mockAxiosInstance.post.mockResolvedValue(mockResponse);
+
+      const payload = {
+        project: 'test',
+        version: 5,
+        variables: [],
+        flags: ['FLAG_1'],
+      };
+
+      const result = await httpClient.callSync(payload);
+
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flags/sync', {
+        project: 'test',
+        version: 5,
+        variables: [],
+        flags: ['FLAG_1'],
+        values: [],
+      });
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('should throw error on connection failure', async () => {
+      const error = { code: 'ECONNREFUSED' };
+      mockAxiosInstance.post.mockRejectedValue(error);
+
+      await expect(httpClient.callSync({ project: 'test' })).rejects.toThrow(
+        'Failed to connect to feature flags server (sync). Is it running?'
+      );
+    });
+  });
+
+  describe('callExchange (deprecated)', () => {
+    let httpClient: FeatureHttpClient;
+
+    beforeEach(() => {
+      httpClient = new FeatureHttpClient(baseURL);
+    });
+
+    it('should call callSync for backward compatibility', async () => {
       const mockResponse = {
         data: {
           version: 10,
@@ -108,7 +230,7 @@ describe('FeatureHttpClient', () => {
 
       const result = await httpClient.callExchange(payload);
 
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('', {
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flags/sync', {
         project: 'test',
         version: 5,
         variables: [],
@@ -116,47 +238,6 @@ describe('FeatureHttpClient', () => {
         values: [],
       });
       expect(result).toEqual(mockResponse.data);
-    });
-
-    it('should throw error on ECONNREFUSED', async () => {
-      const error = { code: 'ECONNREFUSED' };
-      mockAxiosInstance.post.mockRejectedValue(error);
-
-      await expect(httpClient.callExchange({})).rejects.toThrow(
-        'Failed to connect to feature flags server. Is it running?'
-      );
-    });
-
-    it('should throw error on ECONNABORTED (timeout)', async () => {
-      const error = { code: 'ECONNABORTED' };
-      mockAxiosInstance.post.mockRejectedValue(error);
-
-      await expect(httpClient.callExchange({})).rejects.toThrow(
-        'Failed to connect before the deadline'
-      );
-    });
-
-    it('should throw error on server error response', async () => {
-      const error = {
-        response: {
-          status: 422,
-          statusText: 'Unprocessable Entity',
-        },
-      };
-      mockAxiosInstance.post.mockRejectedValue(error);
-
-      await expect(httpClient.callExchange({})).rejects.toThrow(
-        'Server responded with error: 422 Unprocessable Entity'
-      );
-    });
-
-    it('should throw general error for other errors', async () => {
-      const error = { message: 'Network error' };
-      mockAxiosInstance.post.mockRejectedValue(error);
-
-      await expect(httpClient.callExchange({})).rejects.toThrow(
-        'HTTP request failed: Network error'
-      );
     });
   });
 });

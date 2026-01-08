@@ -1,7 +1,6 @@
 import { FeatureClient } from './client';
 
 export { Variable, FeatureClient, Types } from './client';
-export { normalizeIP, normalizeContext } from './utils';
 
 export * from './types';
 

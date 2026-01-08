@@ -1,9 +1,8 @@
 import { FeatureHttpClient } from './http';
 import { StoreController } from './store';
 import { IDictionary } from './types';
-import { log } from './logger';
-import { Variable, FIVE_MINUTES, ONE_MINUTE } from './variables';
-import { normalizeContext } from './utils';
+import { logger } from '@evo/logevo';
+import { Variable, FIVE_MINUTES, ONE_MINUTE, DEFAULT_TIMEOUT } from './variables';
 
 export { Types, Variable } from './variables';
 
@@ -14,6 +13,7 @@ export class FeatureClient {
   private readonly defaultFlags!: IDictionary<boolean>;
   private readonly url!: string;
   private readonly isDebug!: boolean;
+  private readonly timeout!: number;
 
   private stopLoop: boolean = false;
 
@@ -35,6 +35,7 @@ export class FeatureClient {
     variables: Variable[],
     isDebugg: boolean = false,
     interval: number = FIVE_MINUTES,
+    timeout: number = DEFAULT_TIMEOUT,
   ) {
     if (FeatureClient.instance) return FeatureClient.instance;
     
@@ -42,6 +43,7 @@ export class FeatureClient {
 
     this.defaultFlags = defaultFlags;
     this.isDebug = isDebugg;
+    this.timeout = timeout;
 
     this.store = new StoreController(project, variables);
     FeatureClient.instance = this;
@@ -61,7 +63,8 @@ export class FeatureClient {
         const request = this.store.getRequest(flagsUsage);
 
         try {
-          const reply = await this.httpClient.callExchange(request);
+          // Use callSync for cyclic synchronization
+          const reply = await this.httpClient.callSync(request);
           this.store.applyReply(reply);
 
           this.retries = 0;
@@ -69,10 +72,10 @@ export class FeatureClient {
           if (this.retries < this.maxRetry) {
             this.retries++;
             const nextRetryInterval = this.retries * this.retryStep;
-            this.isDebug && log('WARNING', `⚠️  [FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
+            this.isDebug && logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
             reject && reject(e as Error);
           } else {
-            this.isDebug && log('ERROR', `❌ [FeatureFlags] Max retries reached. Stopped.`);
+            this.isDebug && logger.error(`[FeatureFlags] Max retries reached. Stopped.`);
             this.stopLoop = true;
           }
         }
@@ -81,7 +84,7 @@ export class FeatureClient {
           resolve && resolve();
           this.firstLaunch = false;
           
-          this.isDebug && log('INFO', `⏱️  [FeatureFlags] Next sync in ${this.interval / 1000}s`);
+          this.isDebug && logger.debug(`[FeatureFlags] Next sync in ${this.interval / 1000}s`);
         }
 
         !this.stopLoop && _exchangeLoop();
@@ -94,15 +97,31 @@ export class FeatureClient {
   public async start() {
     if (!this.firstLaunch) throw new Error('U can`t launch more then one update loop');
 
-    this.httpClient = new FeatureHttpClient(this.url);
+    this.httpClient = new FeatureHttpClient(this.url, this.timeout);
 
     if (this.isDebug) {
-      log('INFO', `🚀 [FeatureFlags] Client starting...`);
-      log('INFO', `ℹ️  [FeatureFlags] URL: ${this.url}`);
-      log('INFO', `ℹ️  [FeatureFlags] Flags: ${Object.keys(this.defaultFlags).join(', ')}`);
-      log('INFO', `ℹ️  [FeatureFlags] Update interval: ${this.interval / 1000}s`);
+      logger.debug(`[FeatureFlags] Client starting...`);
+      logger.debug(`[FeatureFlags] URL: ${this.url}`);
+      logger.debug(`[FeatureFlags] Flags: ${Object.keys(this.defaultFlags).join(', ')}`);
+      logger.debug(`[FeatureFlags] Update interval: ${this.interval / 1000}s`);
+      logger.debug(`[FeatureFlags] Timeout: ${this.timeout / 1000}s`);
     }
 
+    // Initial load via /load
+    const flagsUsage = Object.keys(this.defaultFlags);
+    const request = this.store.getRequest(flagsUsage);
+    
+    try {
+      this.isDebug && logger.debug(`[FeatureFlags] Initial load...`);
+      const reply = await this.httpClient.callLoad(request);
+      this.store.applyReply(reply);
+      this.isDebug && logger.debug(`[FeatureFlags] Initial load successful`);
+    } catch (e) {
+      this.isDebug && logger.error(`[FeatureFlags] Initial load failed: ${(e as Error).message}`);
+      throw e;
+    }
+
+    // Start cyclic synchronization via /sync
     await this.exchangeLoop();
   }
 
@@ -112,20 +131,17 @@ export class FeatureClient {
   }
 
   public flag(flagName: string, ctx: any = {}): boolean {
-    const normalizedCtx = normalizeContext(ctx);
-
-    this.isDebug && log('INFO', `🎯 [FeatureFlags] Getting flag "${flagName}" with context:`, normalizedCtx);
+    this.isDebug && logger.debug(`[FeatureFlags] Getting flag "${flagName}" with context:`, ctx);
 
     if (!(flagName in this.defaultFlags)) {
       throw new Error(`Flag "${flagName}" is not registered in default flags`);
     }
 
     const check = this.store.getCheck(flagName);
-    const result = check ? check(normalizedCtx) : this.defaultFlags[flagName];
+    const result = check ? check(ctx) : this.defaultFlags[flagName];
 
     if (this.isDebug) {
-      const emoji = result ? '✅' : '❌';
-      log('INFO', `   ${emoji} ${flagName}`);
+      logger.debug(`   ${result} ${flagName}`);
     }
 
     return result;
@@ -133,32 +149,21 @@ export class FeatureClient {
 
   public flags(ctx: any) {
     const flags: IDictionary<boolean> = {};
-    const normalizedCtx = normalizeContext(ctx);
 
-    this.isDebug && log('INFO', '🎯 [FeatureFlags] Getting flags with context:', normalizedCtx);
+    this.isDebug && logger.debug('[FeatureFlags] Getting flags with context:', ctx);
 
     Object.keys(this.defaultFlags).forEach((flagRef: string) => {
       const check = this.store.getCheck(flagRef);
-      const result = check ? check(normalizedCtx) : this.defaultFlags[flagRef];
+      const result = check ? check(ctx) : this.defaultFlags[flagRef];
       
       flags[flagRef] = result;
 
       if (this.isDebug) {
-        const emoji = flags[flagRef] ? '✅' : '❌';
-        log('INFO', `   ${emoji} ${flagRef}`);
+        logger.debug(`   ${result} ${flagRef}`);
       }
     });
 
     return flags;
-  }
-
-  public async callExchange(payload: any): Promise<any> {
-    try {
-      const response = await this.httpClient.callExchange(payload);
-      return response;
-    } catch (error) {
-      console.log('HTTP request failed or unexpected error occurred client');
-    }
   }
 }
 
