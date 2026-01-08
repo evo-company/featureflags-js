@@ -6,6 +6,8 @@ export interface IFeatureClient {
   instance: IFeatureClient;
 }
 
+export type FlagContext = Record<string, string | number | boolean>;
+
 export enum Check {
   __DEFAULT__ = 0,
   EQUAL = 1,

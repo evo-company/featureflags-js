@@ -1,38 +1,19 @@
-import axios from 'axios';
 import { FeatureHttpClient } from '../src/http';
 
-// Mock axios manually
-jest.mock('axios');
+// Mock fetch globally
+global.fetch = jest.fn();
 
 describe('FeatureHttpClient', () => {
   const baseURL = 'http://localhost:3000';
-  let mockAxiosInstance: any;
 
   beforeEach(() => {
-    // Create mock axios instance
-    mockAxiosInstance = {
-      post: jest.fn(),
-    };
-
-    // Mock axios.create
-    (axios.create as any) = jest.fn().mockReturnValue(mockAxiosInstance);
-  });
-
-  afterEach(() => {
     jest.clearAllMocks();
   });
 
   describe('constructor', () => {
     it('should create HTTP client with correct parameters', () => {
-      new FeatureHttpClient(baseURL);
-
-      expect(axios.create).toHaveBeenCalledWith({
-        baseURL: baseURL,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        timeout: 3000,
-      });
+      const client = new FeatureHttpClient(baseURL);
+      expect(client).toBeInstanceOf(FeatureHttpClient);
     });
 
     it('should throw error if baseURL is not provided', () => {
@@ -92,12 +73,14 @@ describe('FeatureHttpClient', () => {
 
     it('should successfully call /load endpoint and return data', async () => {
       const mockResponse = {
-        data: {
-          version: 10,
-          result: { flags: [] },
-        },
+        version: 10,
+        flags: [],
       };
-      mockAxiosInstance.post.mockResolvedValue(mockResponse);
+      
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
 
       const payload = {
         project: 'test',
@@ -108,28 +91,41 @@ describe('FeatureHttpClient', () => {
 
       const result = await httpClient.callLoad(payload);
 
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flags/load', {
-        project: 'test',
-        version: 5,
-        variables: [],
-        flags: ['FLAG_1'],
-        values: [],
-      });
-      expect(result).toEqual(mockResponse.data);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${baseURL}/flags/load`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            project: 'test',
+            version: 5,
+            variables: [],
+            flags: ['FLAG_1'],
+            values: [],
+          }),
+        })
+      );
+      expect(result).toEqual(mockResponse);
     });
 
     it('should throw error on ECONNREFUSED', async () => {
-      const error = { code: 'ECONNREFUSED' };
-      mockAxiosInstance.post.mockRejectedValue(error);
+      const error = new TypeError('fetch failed');
+      Object.defineProperty(error, 'cause', {
+        value: { code: 'ECONNREFUSED' },
+      });
+      (global.fetch as jest.Mock).mockRejectedValue(error);
 
       await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
         'Failed to connect to feature flags server (load). Is it running?'
       );
     });
 
-    it('should throw error on ECONNABORTED (timeout)', async () => {
-      const error = { code: 'ECONNABORTED' };
-      mockAxiosInstance.post.mockRejectedValue(error);
+    it('should throw error on timeout', async () => {
+      const error = new Error('The operation was aborted');
+      error.name = 'AbortError';
+      (global.fetch as jest.Mock).mockRejectedValue(error);
 
       await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
         'Failed to connect before the deadline (load)'
@@ -137,13 +133,11 @@ describe('FeatureHttpClient', () => {
     });
 
     it('should throw error on server error response', async () => {
-      const error = {
-        response: {
-          status: 422,
-          statusText: 'Unprocessable Entity',
-        },
-      };
-      mockAxiosInstance.post.mockRejectedValue(error);
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: 'Unprocessable Entity',
+      });
 
       await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
         'Server responded with error (load): 422 Unprocessable Entity'
@@ -151,8 +145,8 @@ describe('FeatureHttpClient', () => {
     });
 
     it('should throw general error for other errors', async () => {
-      const error = { message: 'Network error' };
-      mockAxiosInstance.post.mockRejectedValue(error);
+      const error = new Error('Network error');
+      (global.fetch as jest.Mock).mockRejectedValue(error);
 
       await expect(httpClient.callLoad({ project: 'test' })).rejects.toThrow(
         'HTTP request failed (load): Network error'
@@ -169,12 +163,14 @@ describe('FeatureHttpClient', () => {
 
     it('should successfully call /sync endpoint and return data', async () => {
       const mockResponse = {
-        data: {
-          version: 10,
-          result: { flags: [] },
-        },
+        version: 10,
+        flags: [],
       };
-      mockAxiosInstance.post.mockResolvedValue(mockResponse);
+      
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
 
       const payload = {
         project: 'test',
@@ -185,59 +181,32 @@ describe('FeatureHttpClient', () => {
 
       const result = await httpClient.callSync(payload);
 
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flags/sync', {
-        project: 'test',
-        version: 5,
-        variables: [],
-        flags: ['FLAG_1'],
-        values: [],
-      });
-      expect(result).toEqual(mockResponse.data);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${baseURL}/flags/sync`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            project: 'test',
+            version: 5,
+            variables: [],
+            flags: ['FLAG_1'],
+            values: [],
+          }),
+        })
+      );
+      expect(result).toEqual(mockResponse);
     });
 
     it('should throw error on connection failure', async () => {
-      const error = { code: 'ECONNREFUSED' };
-      mockAxiosInstance.post.mockRejectedValue(error);
+      const error = new TypeError('fetch failed');
+      (global.fetch as jest.Mock).mockRejectedValue(error);
 
       await expect(httpClient.callSync({ project: 'test' })).rejects.toThrow(
         'Failed to connect to feature flags server (sync). Is it running?'
       );
-    });
-  });
-
-  describe('callExchange (deprecated)', () => {
-    let httpClient: FeatureHttpClient;
-
-    beforeEach(() => {
-      httpClient = new FeatureHttpClient(baseURL);
-    });
-
-    it('should call callSync for backward compatibility', async () => {
-      const mockResponse = {
-        data: {
-          version: 10,
-          result: { flags: [] },
-        },
-      };
-      mockAxiosInstance.post.mockResolvedValue(mockResponse);
-
-      const payload = {
-        project: 'test',
-        version: 5,
-        variables: [],
-        flags: ['FLAG_1'],
-      };
-
-      const result = await httpClient.callExchange(payload);
-
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flags/sync', {
-        project: 'test',
-        version: 5,
-        variables: [],
-        flags: ['FLAG_1'],
-        values: [],
-      });
-      expect(result).toEqual(mockResponse.data);
     });
   });
 });

@@ -1,19 +1,19 @@
 import { FeatureHttpClient } from './http';
 import { StoreController } from './store';
-import { IDictionary } from './types';
+import { IDictionary, FlagContext } from './types';
 import { logger } from '@evo/logevo';
 import { Variable, FIVE_MINUTES, ONE_MINUTE, DEFAULT_TIMEOUT } from './variables';
 
 export { Types, Variable } from './variables';
 
 export class FeatureClient {
-  private httpClient!: FeatureHttpClient;
+  private httpClient: FeatureHttpClient | null = null;
 
-  private readonly store!: StoreController;
-  private readonly defaultFlags!: IDictionary<boolean>;
-  private readonly url!: string;
-  private readonly isDebug!: boolean;
-  private readonly timeout!: number;
+  private store!: StoreController;
+  private defaultFlags!: IDictionary<boolean>;
+  private url!: string;
+  private isDebug!: boolean;
+  private timeout!: number;
 
   private stopLoop: boolean = false;
 
@@ -22,7 +22,7 @@ export class FeatureClient {
   private maxRetry: number = 32;
   private retries: number = 0;
 
-  private firstLaunch: boolean = true;
+  private isInitialized: boolean = false;
 
   public static instance: FeatureClient;
 
@@ -33,24 +33,22 @@ export class FeatureClient {
     url: string,
     defaultFlags: IDictionary<boolean>,
     variables: Variable[],
-    isDebugg: boolean = false,
+    isDebug: boolean = false,
     interval: number = FIVE_MINUTES,
     timeout: number = DEFAULT_TIMEOUT,
   ) {
     if (FeatureClient.instance) return FeatureClient.instance;
     
-    if (!project) throw new Error('Project name, cant be empty');
+    if (!project) throw new Error('Project name cannot be empty');
 
     this.defaultFlags = defaultFlags;
-    this.isDebug = isDebugg;
+    this.isDebug = isDebug;
     this.timeout = timeout;
-
-    this.store = new StoreController(project, variables);
-    FeatureClient.instance = this;
-
     this.url = url;
     this.interval = interval;
 
+    this.store = new StoreController(project, variables);
+    FeatureClient.instance = this;
   }
 
   private async exchangeLoop() {
@@ -64,6 +62,9 @@ export class FeatureClient {
 
         try {
           // Use callSync for cyclic synchronization
+          if (!this.httpClient) {
+            throw new Error('HTTP client not initialized');
+          }
           const reply = await this.httpClient.callSync(request);
           this.store.applyReply(reply);
 
@@ -80,9 +81,9 @@ export class FeatureClient {
           }
         }
 
-        if (this.firstLaunch) {
+        if (!this.isInitialized) {
           resolve && resolve();
-          this.firstLaunch = false;
+          this.isInitialized = true;
           
           this.isDebug && logger.debug(`[FeatureFlags] Next sync in ${this.interval / 1000}s`);
         }
@@ -95,7 +96,7 @@ export class FeatureClient {
   }
 
   public async start() {
-    if (!this.firstLaunch) throw new Error('U can`t launch more then one update loop');
+    if (this.isInitialized) throw new Error('You cannot launch more than one update loop');
 
     this.httpClient = new FeatureHttpClient(this.url, this.timeout);
 
@@ -130,7 +131,7 @@ export class FeatureClient {
     this.stopLoop = true;
   }
 
-  public flag(flagName: string, ctx: any = {}): boolean {
+  public flag(flagName: string, ctx: FlagContext = {}): boolean {
     this.isDebug && logger.debug(`[FeatureFlags] Getting flag "${flagName}" with context:`, ctx);
 
     if (!(flagName in this.defaultFlags)) {
@@ -147,7 +148,7 @@ export class FeatureClient {
     return result;
   }
 
-  public flags(ctx: any) {
+  public flags(ctx: FlagContext = {}): IDictionary<boolean> {
     const flags: IDictionary<boolean> = {};
 
     this.isDebug && logger.debug('[FeatureFlags] Getting flags with context:', ctx);
@@ -167,12 +168,12 @@ export class FeatureClient {
   }
 }
 
-export function getFlags(ctx: object = {}) {
+export function getFlags(ctx: FlagContext = {}): IDictionary<boolean> {
   if (!FeatureClient.instance) throw new Error('You should init FeatureClient, before use');
   return FeatureClient.instance.flags(ctx);
 }
 
-export function getFlag(flagName: string, ctx: object = {}): boolean {
+export function getFlag(flagName: string, ctx: FlagContext = {}): boolean {
   if (!FeatureClient.instance) throw new Error('You should init FeatureClient, before use');
   return FeatureClient.instance.flag(flagName, ctx);
 }
