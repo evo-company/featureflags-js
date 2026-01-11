@@ -1,7 +1,7 @@
 import { FeatureHttpClient } from './http';
 import { StoreController } from './store';
-import { IDictionary, FlagContext } from './types';
-import { logger } from '@evo/logevo';
+import { IDictionary, FlagContext, ILogger } from './types';
+import { defaultLogger } from './logger';
 import { Variable, FIVE_MINUTES, ONE_MINUTE, DEFAULT_TIMEOUT } from './variables';
 
 export { Types, Variable } from './variables';
@@ -14,6 +14,7 @@ export class FeatureClient {
   private url!: string;
   private isDebug!: boolean;
   private timeout!: number;
+  private logger!: ILogger;
 
   private stopLoop: boolean = false;
 
@@ -36,6 +37,7 @@ export class FeatureClient {
     isDebug: boolean = false,
     interval: number = FIVE_MINUTES,
     timeout: number = DEFAULT_TIMEOUT,
+    logger?: ILogger,
   ) {
     if (FeatureClient.instance) return FeatureClient.instance;
     
@@ -46,6 +48,7 @@ export class FeatureClient {
     this.timeout = timeout;
     this.url = url;
     this.interval = interval;
+    this.logger = logger || defaultLogger;
 
     this.store = new StoreController(project, variables);
     FeatureClient.instance = this;
@@ -73,10 +76,10 @@ export class FeatureClient {
           if (this.retries < this.maxRetry) {
             this.retries++;
             const nextRetryInterval = this.retries * this.retryStep;
-            this.isDebug && logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
+            this.logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
             reject && reject(e as Error);
           } else {
-            this.isDebug && logger.error(`[FeatureFlags] Max retries reached. Stopped.`);
+            this.logger.error(`[FeatureFlags] Max retries reached. Stopped.`);
             this.stopLoop = true;
           }
         }
@@ -85,7 +88,7 @@ export class FeatureClient {
           resolve && resolve();
           this.isInitialized = true;
           
-          this.isDebug && logger.debug(`[FeatureFlags] Next sync in ${this.interval / 1000}s`);
+          this.isDebug && this.logger.debug(`[FeatureFlags] Sync loop initialized. Next sync in ${this.interval / 1000}s`);
         }
 
         !this.stopLoop && _exchangeLoop();
@@ -101,11 +104,11 @@ export class FeatureClient {
     this.httpClient = new FeatureHttpClient(this.url, this.timeout);
 
     if (this.isDebug) {
-      logger.debug(`[FeatureFlags] Client starting...`);
-      logger.debug(`[FeatureFlags] URL: ${this.url}`);
-      logger.debug(`[FeatureFlags] Flags: ${Object.keys(this.defaultFlags).join(', ')}`);
-      logger.debug(`[FeatureFlags] Update interval: ${this.interval / 1000}s`);
-      logger.debug(`[FeatureFlags] Timeout: ${this.timeout / 1000}s`);
+      this.logger.debug(`[FeatureFlags] Client starting...`);
+      this.logger.debug(`[FeatureFlags] URL: ${this.url}`);
+      this.logger.debug(`[FeatureFlags] Flags: ${Object.keys(this.defaultFlags).join(', ')}`);
+      this.logger.debug(`[FeatureFlags] Update interval: ${this.interval / 1000}s`);
+      this.logger.debug(`[FeatureFlags] Timeout: ${this.timeout / 1000}s`);
     }
 
     // Initial load via /load
@@ -113,12 +116,12 @@ export class FeatureClient {
     const request = this.store.getRequest(flagsUsage);
     
     try {
-      this.isDebug && logger.debug(`[FeatureFlags] Initial load...`);
+      this.isDebug && this.logger.debug(`[FeatureFlags] Initial load...`);
       const reply = await this.httpClient.callLoad(request);
       this.store.applyReply(reply);
-      this.isDebug && logger.debug(`[FeatureFlags] Initial load successful`);
+      this.isDebug && this.logger.debug(`[FeatureFlags] Initial load successful`);
     } catch (e) {
-      this.isDebug && logger.error(`[FeatureFlags] Initial load failed: ${(e as Error).message}`);
+      this.logger.error(`[FeatureFlags] Initial load failed: ${(e as Error).message}`);
       throw e;
     }
 
@@ -132,7 +135,7 @@ export class FeatureClient {
   }
 
   public flag(flagName: string, ctx: FlagContext = {}): boolean {
-    this.isDebug && logger.debug(`[FeatureFlags] Getting flag "${flagName}" with context:`, ctx);
+    this.isDebug && this.logger.debug(`[FeatureFlags] Getting flag "${flagName}" with context:`, ctx);
 
     if (!(flagName in this.defaultFlags)) {
       throw new Error(`Flag "${flagName}" is not registered in default flags`);
@@ -142,7 +145,7 @@ export class FeatureClient {
     const result = check ? check(ctx) : this.defaultFlags[flagName];
 
     if (this.isDebug) {
-      logger.debug(`   ${result} ${flagName}`);
+      this.logger.debug(`   ${result} ${flagName}`);
     }
 
     return result;
@@ -151,7 +154,7 @@ export class FeatureClient {
   public flags(ctx: FlagContext = {}): IDictionary<boolean> {
     const flags: IDictionary<boolean> = {};
 
-    this.isDebug && logger.debug('[FeatureFlags] Getting flags with context:', ctx);
+    this.isDebug && this.logger.debug('[FeatureFlags] Getting flags with context:', ctx);
 
     Object.keys(this.defaultFlags).forEach((flagRef: string) => {
       const check = this.store.getCheck(flagRef);
@@ -160,7 +163,7 @@ export class FeatureClient {
       flags[flagRef] = result;
 
       if (this.isDebug) {
-        logger.debug(`   ${result} ${flagRef}`);
+        this.logger.debug(`   ${result} ${flagRef}`);
       }
     });
 

@@ -6,6 +6,13 @@ export interface IFeatureClient {
   instance: IFeatureClient;
 }
 
+export interface ILogger {
+  info(message: string, ...args: any[]): void;
+  warn(message: string, ...args: any[]): void;
+  error(message: string, ...args: any[]): void;
+  debug(message: string, ...args: any[]): void;
+}
+
 export type FlagContext = Record<string, string | number | boolean>;
 
 export enum Check {

@@ -1,4 +1,4 @@
-import { FeatureClient, Variable, Types, getFlags } from './index';
+import { FeatureClient, Variable, Types, getFlags, getFlag, FlagContext, ILogger } from './index';
 
 // Default Flags
 export const Flags = {
@@ -18,7 +18,7 @@ export const FlagsVariables = {
 };
 
 // Helper function to get specific flag
-export const useFlag = (flag: keyof tFlagsService, ctx: any = {}): boolean | undefined => {
+export const useFlag = (flag: keyof tFlagsService, ctx: FlagContext = {}): boolean | undefined => {
   return getFlags(ctx)[flag];
 };
 
@@ -32,6 +32,9 @@ interface Config {
   appName: string;
   backendUrl: string;
   isDebug?: boolean;
+  interval?: number;     
+  timeout?: number;       
+  logger?: ILogger;
 }
 
 export const initFlags = async (config: Config) => {
@@ -41,37 +44,63 @@ export const initFlags = async (config: Config) => {
     Flags,
     [UserIp, UserId, Username],
     config.isDebug || false,
+    config.interval,        // Optional: custom sync interval
+    config.timeout,         // Optional: custom request timeout
+    config.logger,          // Optional: custom logger (e.g. logevo)
   );
 
   try {
     await ffClient.start();
-    console.info(`Starting [featureFlags client]`);
+    console.info('[FeatureFlags] Client started successfully');
   } catch (e) {
     console.error(
-      `Error at FeatureFlags startup. Going to start application with default flags: Error - ${e}`,
+      `[FeatureFlags] Error at startup. Application will use default flags: ${e}`,
     );
+    throw e; // Re-throw if you want to prevent app from starting
   }
 
   return ffClient;
 };
 
+// Example configuration
 const config: Config = {
   appName: 'vchasno',
   backendUrl: 'http://localhost:3000',
   isDebug: true,
+  interval: 5 * 60 * 1000,  // 5 minutes
+  timeout: 10000,            // 10 seconds
+  // logger: logger,         // Optional: pass logevo or custom logger
 };
 
+// Initialize and use
 initFlags(config).then(() => {
-  console.log('Feature flags initialized');
+  console.log('[FeatureFlags] Initialization complete');
   
-  // Example usage with IP normalization
-  // In real code req.ip might be '::ffff:192.168.1.1'
-  const mockIP = '192.168.97.5';
-  
-  const flags = getFlags({
-    'user.ip': mockIP, // Will be '192.168.97.5'
+  // Example 1: Get all flags with context
+  const context: FlagContext = {
+    'user.ip': '192.168.97.5',
     'user.id': 12345,
-  });
+    'user.username': 'john.doe',
+  };
   
-  console.log('Example flags:', flags);
+  const flags = getFlags(context);
+  console.log('All flags:', flags);
+  
+  // Example 2: Get single flag
+  const isTestEnabled = getFlag('TEST_FEATURE', context);
+  console.log('TEST_FEATURE enabled:', isTestEnabled);
+  
+  // Example 3: Use helper function
+  const isCacheEnabled = useFlag('ENABLE_CACHE', context);
+  console.log('ENABLE_CACHE enabled:', isCacheEnabled);
+  
+  // Example 4: Use flags in your application logic
+  if (flags.NEW_API_ENDPOINT) {
+    console.log('Using new API endpoint');
+  } else {
+    console.log('Using legacy API endpoint');
+  }
+}).catch((error) => {
+  console.error('[FeatureFlags] Failed to initialize:', error);
+  process.exit(1);
 });
