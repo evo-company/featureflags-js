@@ -1,13 +1,13 @@
 {
   "compilerOptions": {
-    "target": "es2017",
+    "target": "ES2020",
     "module": "commonjs",
     "rootDirs": [
       "src",
       "tests"
     ],
     "outDir": "dist",
-    "lib": ["es7", "esnext"],
+    "lib": ["ES2020"],
     "noImplicitAny": true,
     "noImplicitReturns": true,
     "noUnusedParameters": true,
@@ -18,6 +18,11 @@
     "sourceMap": true,
     "baseUrl": ".",
     "declaration": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
     "paths": {
       "*": [
         "./node_modules/@types/*",
@@ -28,7 +33,9 @@
     }
   },
   "exclude": [
-    "./src/__tests__/**"
+    "./src/__tests__/**",
+    "node_modules",
+    "dist"
   ],
   "include": [
       "src/**/*.ts"

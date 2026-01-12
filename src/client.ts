@@ -1,134 +1,131 @@
-import { FeatureGrpcClient } from './grpc';
+import { FeatureHttpClient } from './http';
 import { StoreController } from './store';
-import { IDictionary } from './types';
+import { IDictionary, FlagContext, ILogger } from './types';
+import { defaultLogger } from './logger';
+import { Variable, FIVE_MINUTES, ONE_MINUTE, DEFAULT_TIMEOUT } from './variables';
 
-import { featureflags, google } from '../protostub/proto';
-import _Variable = featureflags.graph.Variable;
-import Timestamp = google.protobuf.Timestamp;
-
-export class Types {
-  public static STRING = _Variable.Type.STRING;
-  public static NUMBER = _Variable.Type.NUMBER;
-  public static TIMESTAMP = _Variable.Type.TIMESTAMP;
-  public static SET = _Variable.Type.SET;
-}
-
-export class Variable {
-  public name: string;
-  public type: _Variable.Type;
-
-  constructor(name: string, type: _Variable.Type) {
-    this.name = name;
-    this.type = type;
-  }
-}
-
-const FIVE_MINUTES = 60 * 5 * 1000;
+export { Types, Variable } from './variables';
 
 export class FeatureClient {
-  private grpcClient: FeatureGrpcClient;
+  private httpClient: FeatureHttpClient | null = null;
 
-  private readonly store: StoreController;
-  private readonly defaultFlags: IDictionary<boolean>;
-  private readonly grpcUrl: string;
+  private store!: StoreController;
+  private defaultFlags!: IDictionary<boolean>;
+  private url!: string;
+  private isDebug!: boolean;
+  private timeout!: number;
+  private logger!: ILogger;
 
   private stopLoop: boolean = false;
 
-  private minute: number = 60 * 1000;
-  private retryStep: number = this.minute;
-  private loopInterval: number = 0;
+  private retryStep: number = ONE_MINUTE;
 
   private maxRetry: number = 32;
   private retries: number = 0;
 
-  private firstLaunch: boolean = true;
+  private isInitialized: boolean = false;
 
   public static instance: FeatureClient;
 
-  public isDebugg: boolean = false;
   public interval: number = FIVE_MINUTES;
 
   constructor(
     project: string,
-    grpcUrl: string,
+    url: string,
     defaultFlags: IDictionary<boolean>,
     variables: Variable[],
-    isDebugg: boolean = false,
+    isDebug: boolean = false,
     interval: number = FIVE_MINUTES,
+    timeout: number = DEFAULT_TIMEOUT,
+    logger?: ILogger,
   ) {
     if (FeatureClient.instance) return FeatureClient.instance;
-
-    if (!project) throw new Error('Project name, cant be empty');
+    
+    if (!project) throw new Error('Project name cannot be empty');
 
     this.defaultFlags = defaultFlags;
+    this.isDebug = isDebug;
+    this.timeout = timeout;
+    this.url = url;
+    this.interval = interval;
+    this.logger = logger || defaultLogger;
 
     this.store = new StoreController(project, variables);
     FeatureClient.instance = this;
-
-    this.isDebugg = isDebugg;
-    this.grpcUrl = grpcUrl;
-    this.interval = interval;
   }
 
   private async exchangeLoop() {
-    const _exchangeLoop = (resolve = (): any => void 0, reject = (e: Error): any => void e) => {
+    const _exchangeLoop = (resolve?: () => void, reject?: (e: Error) => void) => {
+      const retryInterval = this.retries * this.retryStep;
+      const currentInterval = this.retries > 0 ? retryInterval : this.interval;
+      
       setTimeout(async () => {
-        this.isDebugg && console.log('Exchange task started');
-
-        const timeMS = Date.now();
-        const timestamp = new Timestamp({
-          seconds: timeMS / 1000,
-          nanos: (timeMS % 1000) * 1e6,
-        });
-
-        // it`s temporary mock, until StatsController realisation, as mansioned in todo
-        const flagsUsage = Object.keys(this.defaultFlags).map((flagRef) => ({
-          name: flagRef,
-          // google.protobuf.ITimestamp
-          interval: timestamp,
-          negativeCount: 0,
-          positiveCount: 0,
-        }));
-
+        const flagsUsage = Object.keys(this.defaultFlags);
         const request = this.store.getRequest(flagsUsage);
-        this.isDebugg && console.log(`Exchange request: `, request);
+
         try {
-          const reply = await this.grpcClient.callExchange(request);
-          this.isDebugg && console.log(`Exchange reply: `, reply);
+          // Use callSync for cyclic synchronization
+          if (!this.httpClient) {
+            throw new Error('HTTP client not initialized');
+          }
+          const reply = await this.httpClient.callSync(request);
           this.store.applyReply(reply);
 
           this.retries = 0;
-          this.loopInterval = this.interval;
         } catch (e) {
-          if (this.retries <= this.maxRetry) {
-            this.loopInterval = this.loopInterval + this.retryStep;
-            console.log(`Failed to exchange: ${e}, retry in ${this.loopInterval} mls`);
-            this.isDebugg && console.log(e.stack);
+          if (this.retries < this.maxRetry) {
             this.retries++;
-            reject(e);
-          } else this.stopLoop = true;
+            const nextRetryInterval = this.retries * this.retryStep;
+            this.logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
+            reject && reject(e as Error);
+          } else {
+            this.logger.error(`[FeatureFlags] Max retries reached. Stopped.`);
+            this.stopLoop = true;
+          }
         }
 
-        if (this.firstLaunch) {
-          resolve();
-          this.firstLaunch = false;
-          this.loopInterval = this.interval;
+        if (!this.isInitialized) {
+          resolve && resolve();
+          this.isInitialized = true;
+          
+          this.isDebug && this.logger.debug(`[FeatureFlags] Sync loop initialized. Next sync in ${this.interval / 1000}s`);
         }
 
-        this.isDebugg && console.log(`Exchange complete, next will be in ${this.loopInterval} mls`);
         !this.stopLoop && _exchangeLoop();
-      }, this.loopInterval);
+      }, currentInterval);
     };
 
-    return new Promise((resolve, reject) => _exchangeLoop(resolve, reject));
+    return new Promise<void>((resolve, reject) => _exchangeLoop(resolve, reject));
   }
 
   public async start() {
-    if (!this.firstLaunch) throw new Error('U can`t launch more then one update loop');
+    if (this.isInitialized) throw new Error('You cannot launch more than one update loop');
 
-    this.grpcClient = new FeatureGrpcClient(this.grpcUrl);
-    await this.grpcClient.createClient();
+    this.httpClient = new FeatureHttpClient(this.url, this.timeout);
 
+    if (this.isDebug) {
+      this.logger.debug(`[FeatureFlags] Client starting...`);
+      this.logger.debug(`[FeatureFlags] URL: ${this.url}`);
+      this.logger.debug(`[FeatureFlags] Flags: ${Object.keys(this.defaultFlags).join(', ')}`);
+      this.logger.debug(`[FeatureFlags] Update interval: ${this.interval / 1000}s`);
+      this.logger.debug(`[FeatureFlags] Timeout: ${this.timeout / 1000}s`);
+    }
+
+    // Initial load via /load
+    const flagsUsage = Object.keys(this.defaultFlags);
+    const request = this.store.getRequest(flagsUsage);
+    
+    try {
+      this.isDebug && this.logger.debug(`[FeatureFlags] Initial load...`);
+      const reply = await this.httpClient.callLoad(request);
+      this.store.applyReply(reply);
+      this.isDebug && this.logger.debug(`[FeatureFlags] Initial load successful`);
+    } catch (e) {
+      this.logger.error(`[FeatureFlags] Initial load failed: ${(e as Error).message}`);
+      throw e;
+    }
+
+    // Start cyclic synchronization via /sync
     await this.exchangeLoop();
   }
 
@@ -137,21 +134,49 @@ export class FeatureClient {
     this.stopLoop = true;
   }
 
-  public flags(ctx: object = {}) {
+  public flag(flagName: string, ctx: FlagContext = {}): boolean {
+    this.isDebug && this.logger.debug(`[FeatureFlags] Getting flag "${flagName}" with context:`, ctx);
+
+    if (!(flagName in this.defaultFlags)) {
+      throw new Error(`Flag "${flagName}" is not registered in default flags`);
+    }
+
+    const check = this.store.getCheck(flagName);
+    const result = check ? check(ctx) : this.defaultFlags[flagName];
+
+    if (this.isDebug) {
+      this.logger.debug(`   ${result} ${flagName}`);
+    }
+
+    return result;
+  }
+
+  public flags(ctx: FlagContext = {}): IDictionary<boolean> {
     const flags: IDictionary<boolean> = {};
+
+    this.isDebug && this.logger.debug('[FeatureFlags] Getting flags with context:', ctx);
 
     Object.keys(this.defaultFlags).forEach((flagRef: string) => {
       const check = this.store.getCheck(flagRef);
-
-      let result = check && check(ctx);
-
-      if (typeof result == 'undefined') {
-        result = this.defaultFlags[flagRef];
-      }
-
+      const result = check ? check(ctx) : this.defaultFlags[flagRef];
+      
       flags[flagRef] = result;
+
+      if (this.isDebug) {
+        this.logger.debug(`   ${result} ${flagRef}`);
+      }
     });
 
     return flags;
   }
+}
+
+export function getFlags(ctx: FlagContext = {}): IDictionary<boolean> {
+  if (!FeatureClient.instance) throw new Error('You should init FeatureClient, before use');
+  return FeatureClient.instance.flags(ctx);
+}
+
+export function getFlag(flagName: string, ctx: FlagContext = {}): boolean {
+  if (!FeatureClient.instance) throw new Error('You should init FeatureClient, before use');
+  return FeatureClient.instance.flag(flagName, ctx);
 }
