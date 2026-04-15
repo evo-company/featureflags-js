@@ -1,7 +1,7 @@
 # Feature Flags client
 
-NodeJS client `grpc` lib, for [featureflags](https://github.com/evo-company/featureflags) service. Provides abilitty to gracefull *set* and *update*s
-for ur features.
+Node.js HTTP client for the [featureflags](https://github.com/evo-company/featureflags) service.
+It provides graceful fallback to default values and periodic flag synchronization.
 
 ## Installation
 
@@ -9,8 +9,12 @@ for ur features.
 npm i @evo/featureflags-client
 ```
 
-Package is uploaded to public npm https://www.npmjs.com/package/@evo/featureflags-client.
+Package is available on [npm](https://www.npmjs.com/package/@evo/featureflags-client).
 
+Requirements:
+
+- Node.js `>=16.0.0`
+- npm `>=8.0.0`
 
 ## Setup
 
@@ -32,22 +36,30 @@ const variables = [
 const featureClient = new FeatureClient(
   // project name
   'my-cool-project',
-  // grpc url
-  'grpc:50051',
+  // featureflags HTTP base url
+  'http://localhost:3000',
   // default flags
   Flags,
   // variables are used to conditionally enable flags
   variables,
-  // isDebug mode (default: true)
-  true,  
+  // isDebug mode (default: false)
+  true,
   // Optional argument for set interval in milliseconds for fetching flags
   // from service. By default set to 5 min (5 * 60 * 1000).
   1000 * 10,
+  // Optional request timeout in milliseconds (default: 10000)
+  10000,
 );
 ```
 
 ### Start
-Next start grpc client in async infinite loop, it will be refetching flags values every 5 minutes.
+
+Start the client and run initial HTTP load + sync loop.
+
+On startup client calls:
+
+- `POST /flags/load` - initial flag snapshot
+- `POST /flags/sync` - periodic updates (every `interval`)
 
 ```js
 try {
@@ -57,21 +69,35 @@ try {
 }
 ```
 
+### Usage
+
+In your app code (controllers, handlers, tasks), call `getFlags` and provide `context = {}`.
+Context is an object with `Variable` name as a key and a value for condition checks.
+
+```js
+import { getFlags } from '@evo/featureflags-client';
+
+// ready to use object with proceeded checks
+const flags = getFlags({ 'user.ip': '127.0.0.1' });
+
+if (flags.TEST) doSomeThing();
+```
+
 ### Retries
 
 There are 2 options if featureflags client fails to connect to featureflags server:
 
-1. Application will not start.
+1. Application will not start (`client.start()` throws).
 
    This may be desired behavior if application must not work with default flags.
 
-2. Application starts with default flags and retries untill it will connect to featureflags server.
+2. Application starts with default flags and retries until it can connect.
 
    This behavior is preferable if your application can work with default flags. It will allow you to server requests
-   untill featureflags server will be available again.
+   until featureflags server will be available again.
 
    Here is some example of what retry may look like. In this example we are relying on assumption that there is a small outage
-   and server will become available asap. But if server is down for a long time, we will increse retry delay. 
+   and server will become available asap. But if server is down for a long time, we will increse retry delay.
 
    This is just an example and you are free to implement a much simpler or must complex solution.
 
@@ -123,30 +149,4 @@ There are 2 options if featureflags client fails to connect to featureflags serv
         console.log(`[FeatureFlags] failed to connect to server. Start application with default flags and keep retrying: Error - ${e}`,);
         startWithRetry(featureClient);
     }
-   ``` 
-
-
-## Usage
-
-Now in you code (controllers, handlers, tasks) call `getFlags`, and provide there `context = {}`. 
-Ctx is the object with `Variable` as a key and a value you want checks to depend on.
-
-```js
-import { getFlags } from '@evo/featureflags-client';
-
-// ready to use object with proceeded checks
-const flags = getFlags({ 'user.ip': '127.0.0.1' });
-
-if (flags.TEST) doSomeThing();
-```
-
-## Proto files
-
-`.proto` files are vendored. Original [protofiles are here](https://github.com/evo-company/featureflags/tree/main/protobuf/featureflags/protobuf)
-
-`.proto` files must be kept in sync with original repo and stubs must be regenerated if needed.
-
-### TODO:
-- *StatsController* - Accumulates interval/flag/requests count
-- *Tracer* - Accumulates request/flag/values
-- *Dummy Manager* - For testing purposes
+   ```
