@@ -1,6 +1,6 @@
 {
   "name": "@evo/featureflags-client",
-  "version": "2.0.7",
+  "version": "2.1.0",
   "description": "HTTP node client for feature flags service",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
