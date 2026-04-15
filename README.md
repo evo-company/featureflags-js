@@ -150,3 +150,23 @@ There are 2 options if featureflags client fails to connect to featureflags serv
         startWithRetry(featureClient);
     }
    ```
+
+## Release
+
+New versions are released via GitHub Actions workflow `.github/workflows/release.yml`.
+
+1. Open GitHub **Actions** -> **Release to NPM**.
+2. Click **Run workflow**.
+3. Select `version_type`:
+   - `patch` for bugfix releases (`x.y.Z`)
+   - `minor` for backward-compatible features (`x.Y.0`)
+   - `major` for breaking changes (`X.0.0`)
+4. Run the workflow on `main`.
+
+Workflow will:
+
+- run `npm ci`, `npm test`, `npm run build`
+- bump version with `npm version`
+- push commit + git tag
+- publish package to npm (`npm publish --access public`)
+- generate changelog and create a new github release

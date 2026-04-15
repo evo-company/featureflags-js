@@ -58,3 +58,21 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+
+      - name: Get Changelog
+        id: get-changelog
+        run: |
+          tags=$(git tag --sort=-version:refname | head -n 2 | awk '{print $1}')
+          tag_from=$(echo "$tags" | sed -n '2p')
+          tag_to=$(echo "$tags" | sed -n '1p')
+          git log --oneline --decorate "${tag_from}..${tag_to}" | tail -n +2 | awk '{print "* "$0}' > .changelog.md
+      - name: Create Release
+        uses: actions/create-release@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          body_path: .changelog.md
+          draft: false
+          prerelease: false
