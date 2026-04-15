@@ -78,8 +78,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: refs/tags/v${{ steps.version.outputs.version }}
-          name: refs/tags/v${{ steps.version.outputs.version }}
+          tag_name: refs/tags/v${{ steps.version.outputs.new_version }}
+          name: refs/tags/v${{ steps.version.outputs.new_version }}
           body_path: .changelog.md
           generate_release_notes: true
           draft: false
