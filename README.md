@@ -42,13 +42,18 @@ const featureClient = new FeatureClient(
   Flags,
   // variables are used to conditionally enable flags
   variables,
-  // isDebug mode (default: false)
-  true,
-  // Optional argument for set interval in milliseconds for fetching flags
-  // from service. By default set to 5 min (5 * 60 * 1000).
-  1000 * 10,
-  // Optional request timeout in milliseconds (default: 10000)
-  10000,
+  {
+    // isDebug mode (default: false)
+    isDebug: true,
+    // Optional argument for set interval in milliseconds for fetching flags
+    // from service. By default set to 5 min (5 * 60 * 1000).
+    interval: 1000 * 10,
+    // Optional request timeout in milliseconds (default: 10000)
+    timeout: 10000,
+    // Optional max retries for /flags/sync failures (default: -1 = infinite)
+    maxExchangeRetries: -1,
+    // Retry backoff delay is capped at 15 minutes
+  },
 );
 ```
 
@@ -93,13 +98,32 @@ There are 2 options if featureflags client fails to connect to featureflags serv
 
 2. Application starts with default flags and retries until it can connect.
 
-   This behavior is preferable if your application can work with default flags. It will allow you to server requests
+   This behavior is preferable if your application can work with default flags. It will allow you to serve requests
    until featureflags server will be available again.
+   Exchange retry interval is calculated like this:
+
+   - `retryInterval = min(retries * 60_000, 900_000)`
+   - `retries` increments after each failed `/flags/sync` call
+   - cap is `900_000 ms` (`15 minutes`)
+   - after successful `/flags/sync`, `retries` resets to `0` and normal `interval` is used again
+
+   Examples:
+   - 1st failed sync -> `60_000 ms` (1 minute)
+   - 5th failed sync -> `300_000 ms` (5 minutes)
+   - 20th failed sync -> `900_000 ms` (capped at 15 minutes)
 
    Here is some example of what retry may look like. In this example we are relying on assumption that there is a small outage
    and server will become available asap. But if server is down for a long time, we will increse retry delay.
 
    This is just an example and you are free to implement a much simpler or must complex solution.
+
+   By default client performs infinite retries for sync failures. You can limit it with constructor option:
+
+   ```js
+   const featureClient = new FeatureClient(project, url, Flags, variables, {
+     maxExchangeRetries: 10, // stop sync loop after 10 failed retries
+   });
+   ```
 
    ```js
     /**
