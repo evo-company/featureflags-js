@@ -24,6 +24,7 @@ export class FeatureClient {
   private retries: number = 0;
 
   private isInitialized: boolean = false;
+  private isStarting: boolean = false;
 
   public static instance: FeatureClient;
 
@@ -40,7 +41,7 @@ export class FeatureClient {
     logger?: ILogger,
   ) {
     if (FeatureClient.instance) return FeatureClient.instance;
-    
+
     if (!project) throw new Error('Project name cannot be empty');
 
     this.defaultFlags = defaultFlags;
@@ -54,52 +55,45 @@ export class FeatureClient {
     FeatureClient.instance = this;
   }
 
-  private async exchangeLoop() {
-    const _exchangeLoop = (resolve?: () => void, reject?: (e: Error) => void) => {
-      const retryInterval = this.retries * this.retryStep;
-      const currentInterval = this.retries > 0 ? retryInterval : this.interval;
-      
-      setTimeout(async () => {
-        const flagsUsage = Object.keys(this.defaultFlags);
-        const request = this.store.getRequest(flagsUsage);
+  private exchangeLoop() {
+    const retryInterval = this.retries * this.retryStep;
+    const currentInterval = this.retries > 0 ? retryInterval : this.interval;
 
-        try {
-          // Use callSync for cyclic synchronization
-          if (!this.httpClient) {
-            throw new Error('HTTP client not initialized');
-          }
-          const reply = await this.httpClient.callSync(request);
-          this.store.applyReply(reply);
+    setTimeout(async () => {
+      if (this.stopLoop) return;
 
-          this.retries = 0;
-        } catch (e) {
-          if (this.retries < this.maxRetry) {
-            this.retries++;
-            const nextRetryInterval = this.retries * this.retryStep;
-            this.logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
-            reject && reject(e as Error);
-          } else {
-            this.logger.error(`[FeatureFlags] Max retries reached. Stopped.`);
-            this.stopLoop = true;
-          }
+      const flagsUsage = Object.keys(this.defaultFlags);
+      const request = this.store.getRequest(flagsUsage);
+
+      try {
+        if (!this.httpClient) {
+          throw new Error('HTTP client not initialized');
         }
-
-        if (!this.isInitialized) {
-          resolve && resolve();
-          this.isInitialized = true;
-          
-          this.isDebug && this.logger.debug(`[FeatureFlags] Sync loop initialized. Next sync in ${this.interval / 1000}s`);
+        const reply = await this.httpClient.callSync(request);
+        this.store.applyReply(reply);
+        this.retries = 0;
+      } catch (e) {
+        if (this.retries < this.maxRetry) {
+          this.retries++;
+          const nextRetryInterval = this.retries * this.retryStep;
+          this.logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
+        } else {
+          this.logger.error(`[FeatureFlags] Max retries reached. Stopped.`);
+          this.stopLoop = true;
         }
+      }
 
-        !this.stopLoop && _exchangeLoop();
-      }, currentInterval);
-    };
-
-    return new Promise<void>((resolve, reject) => _exchangeLoop(resolve, reject));
+      if (!this.stopLoop) {
+        this.exchangeLoop();
+      }
+    }, currentInterval);
   }
 
   public async start() {
-    if (this.isInitialized) throw new Error('You cannot launch more than one update loop');
+    if (this.isInitialized || this.isStarting) throw new Error('You cannot launch more than one update loop');
+
+    this.isStarting = true;
+    this.stopLoop = false;
 
     this.httpClient = new FeatureHttpClient(this.url, this.timeout);
 
@@ -114,19 +108,24 @@ export class FeatureClient {
     // Initial load via /load
     const flagsUsage = Object.keys(this.defaultFlags);
     const request = this.store.getRequest(flagsUsage);
-    
+
     try {
       this.isDebug && this.logger.debug(`[FeatureFlags] Initial load...`);
       const reply = await this.httpClient.callLoad(request);
       this.store.applyReply(reply);
       this.isDebug && this.logger.debug(`[FeatureFlags] Initial load successful`);
     } catch (e) {
+      this.isStarting = false;
+      this.httpClient = null;
       this.logger.error(`[FeatureFlags] Initial load failed: ${(e as Error).message}`);
       throw e;
     }
 
     // Start cyclic synchronization via /sync
-    await this.exchangeLoop();
+    this.isInitialized = true;
+    this.isStarting = false;
+    this.isDebug && this.logger.debug(`[FeatureFlags] Sync loop initialized. Next sync in ${this.interval / 1000}s`);
+    this.exchangeLoop();
   }
 
   public stop() {
@@ -159,7 +158,7 @@ export class FeatureClient {
     Object.keys(this.defaultFlags).forEach((flagRef: string) => {
       const check = this.store.getCheck(flagRef);
       const result = check ? check(ctx) : this.defaultFlags[flagRef];
-      
+
       flags[flagRef] = result;
 
       if (this.isDebug) {
