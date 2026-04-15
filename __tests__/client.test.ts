@@ -1,4 +1,5 @@
 import { FeatureClient, Variable, Types } from '../src/client';
+import { MAX_RETRY_INTERVAL } from '../src/variables';
 
 global.fetch = jest.fn();
 
@@ -25,8 +26,10 @@ describe('FeatureClient start behavior', () => {
       'http://localhost:3000',
       { TEST: false },
       [new Variable('user.ip', Types.STRING)],
-      false,
-      5 * 60 * 1000,
+      {
+        isDebug: false,
+        interval: 5 * 60 * 1000,
+      },
     );
 
     const startPromise = client.start();
@@ -41,5 +44,23 @@ describe('FeatureClient start behavior', () => {
       'http://localhost:3000/flags/load',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  it('caps exchange retry interval to max retry interval', () => {
+    jest.useFakeTimers();
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+
+    const client = new FeatureClient(
+      'test-project',
+      'http://localhost:3000',
+      { TEST: false },
+      [new Variable('user.ip', Types.STRING)],
+    );
+
+    (client as any).retries = 9999;
+    (client as any).exchangeLoop();
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), MAX_RETRY_INTERVAL);
+    setTimeoutSpy.mockRestore();
   });
 });

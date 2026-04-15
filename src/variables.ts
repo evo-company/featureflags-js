@@ -18,4 +18,5 @@ export class Variable {
 export const FIVE_MINUTES = 5 * 60 * 1000;
 export const ONE_MINUTE = 60 * 1000;
 export const DEFAULT_TIMEOUT = 10 * 1000; // 10 seconds
+export const MAX_RETRY_INTERVAL = 15 * 60 * 1000; // 15 minutes
 

@@ -32,8 +32,9 @@ interface Config {
   appName: string;
   backendUrl: string;
   isDebug?: boolean;
-  interval?: number;     
-  timeout?: number;       
+  interval?: number;
+  timeout?: number;
+  maxExchangeRetries?: number;
   logger?: ILogger;
 }
 
@@ -43,10 +44,13 @@ export const initFlags = async (config: Config) => {
     config.backendUrl,
     Flags,
     [UserIp, UserId, Username],
-    config.isDebug || false,
-    config.interval,        // Optional: custom sync interval
-    config.timeout,         // Optional: custom request timeout
-    config.logger,          // Optional: custom logger (e.g. logevo)
+    {
+      isDebug: config.isDebug || false,
+      interval: config.interval,  // Optional: custom sync interval
+      timeout: config.timeout,    // Optional: custom request timeout
+      maxExchangeRetries: config.maxExchangeRetries, // Optional: -1 means infinite retries
+      logger: config.logger,      // Optional: custom logger (e.g. logevo)
+    },
   );
 
   try {
@@ -69,6 +73,7 @@ const config: Config = {
   isDebug: true,
   interval: 5 * 60 * 1000,  // 5 minutes
   timeout: 10000,            // 10 seconds
+  maxExchangeRetries: -1,    // -1 means infinite retries in sync loop
   // logger: logger,         // Optional: pass logevo or custom logger
 };
 

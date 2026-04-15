@@ -2,9 +2,17 @@ import { FeatureHttpClient } from './http';
 import { StoreController } from './store';
 import { IDictionary, FlagContext, ILogger } from './types';
 import { defaultLogger } from './logger';
-import { Variable, FIVE_MINUTES, ONE_MINUTE, DEFAULT_TIMEOUT } from './variables';
+import { Variable, FIVE_MINUTES, ONE_MINUTE, DEFAULT_TIMEOUT, MAX_RETRY_INTERVAL } from './variables';
 
 export { Types, Variable } from './variables';
+
+export interface FeatureClientOptions {
+  isDebug?: boolean;
+  interval?: number;
+  timeout?: number;
+  logger?: ILogger;
+  maxExchangeRetries?: number;
+}
 
 export class FeatureClient {
   private httpClient: FeatureHttpClient | null = null;
@@ -20,7 +28,7 @@ export class FeatureClient {
 
   private retryStep: number = ONE_MINUTE;
 
-  private maxRetry: number = 32;
+  private maxExchangeRetries: number = -1;
   private retries: number = 0;
 
   private isInitialized: boolean = false;
@@ -35,28 +43,34 @@ export class FeatureClient {
     url: string,
     defaultFlags: IDictionary<boolean>,
     variables: Variable[],
-    isDebug: boolean = false,
-    interval: number = FIVE_MINUTES,
-    timeout: number = DEFAULT_TIMEOUT,
-    logger?: ILogger,
+    options: FeatureClientOptions = {},
   ) {
     if (FeatureClient.instance) return FeatureClient.instance;
 
     if (!project) throw new Error('Project name cannot be empty');
+
+    const {
+      isDebug = false,
+      interval = FIVE_MINUTES,
+      timeout = DEFAULT_TIMEOUT,
+      logger = defaultLogger,
+      maxExchangeRetries = -1,
+    } = options;
 
     this.defaultFlags = defaultFlags;
     this.isDebug = isDebug;
     this.timeout = timeout;
     this.url = url;
     this.interval = interval;
-    this.logger = logger || defaultLogger;
+    this.logger = logger;
+    this.maxExchangeRetries = maxExchangeRetries;
 
     this.store = new StoreController(project, variables);
     FeatureClient.instance = this;
   }
 
   private exchangeLoop() {
-    const retryInterval = this.retries * this.retryStep;
+    const retryInterval = Math.min(this.retries * this.retryStep, MAX_RETRY_INTERVAL);
     const currentInterval = this.retries > 0 ? retryInterval : this.interval;
 
     setTimeout(async () => {
@@ -73,12 +87,14 @@ export class FeatureClient {
         this.store.applyReply(reply);
         this.retries = 0;
       } catch (e) {
-        if (this.retries < this.maxRetry) {
+        const hasRetryLimit = this.maxExchangeRetries >= 0;
+        if (!hasRetryLimit || this.retries < this.maxExchangeRetries) {
           this.retries++;
           const nextRetryInterval = this.retries * this.retryStep;
-          this.logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${this.maxRetry})`);
+          const retriesLabel = hasRetryLimit ? this.maxExchangeRetries : 'infinite';
+          this.logger.warn(`[FeatureFlags] Connection failed, retry in ${nextRetryInterval / 1000}s (attempt ${this.retries}/${retriesLabel})`);
         } else {
-          this.logger.error(`[FeatureFlags] Max retries reached. Stopped.`);
+          this.logger.error(`[FeatureFlags] Max retries reached in exchangeLoop (${this.maxExchangeRetries}). Stopped.`);
           this.stopLoop = true;
         }
       }
@@ -103,6 +119,7 @@ export class FeatureClient {
       this.logger.debug(`[FeatureFlags] Flags: ${Object.keys(this.defaultFlags).join(', ')}`);
       this.logger.debug(`[FeatureFlags] Update interval: ${this.interval / 1000}s`);
       this.logger.debug(`[FeatureFlags] Timeout: ${this.timeout / 1000}s`);
+      this.logger.debug(`[FeatureFlags] Max exchange retries: ${this.maxExchangeRetries < 0 ? 'infinite' : this.maxExchangeRetries}`);
     }
 
     // Initial load via /load

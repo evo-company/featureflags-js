@@ -1,7 +1,7 @@
 import { FeatureClient } from './client';
 import { FlagContext } from './types';
 
-export { Variable, FeatureClient, Types } from './client';
+export { Variable, FeatureClient, Types, FeatureClientOptions } from './client';
 
 export * from './types';
 
