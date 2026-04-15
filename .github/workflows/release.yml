@@ -72,13 +72,23 @@ jobs:
           tag_from=$(echo "$tags" | sed -n '2p')
           tag_to=$(echo "$tags" | sed -n '1p')
           git log --oneline --decorate "${tag_from}..${tag_to}" | tail -n +2 | awk '{print "* "$0}' > .changelog.md
+
+      - name: Compute tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create Release
         uses: actions/create-release@main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          release_name: ${{ steps.tag.outputs.tag }}
           body_path: .changelog.md
           draft: false
           prerelease: false
